@@ -7,7 +7,7 @@ class App < Sinatra::Base
     url = "https://offline.lad.lviv.ua/#{stop_code}"
     file_path = "/tmp/#{stop_code}.pdf"
 
-    result = system("wkhtmltopdf -q --page-height 310mm --page-width 460mm -B 0 -L 0 -R 0 -T 0 --zoom 0.5 --disable-external-links '#{url}' '#{file_path}'")
+    result = system("wkhtmltopdf -q --page-height 310mm --page-width 460mm -B 0 -L 0 -R 0 -T 0 --zoom 0.35 --disable-external-links '#{url}' '#{file_path}'")
 
     content_type 'application/pdf'
     io = StringIO.new(file_path)
