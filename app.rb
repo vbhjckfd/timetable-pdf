@@ -1,6 +1,13 @@
 require 'sinatra/base'
+require 'rackup'
+# Load thin fully before Rackup resolves its handler; the handler file alone
+# does not pull in Thin::Logging (thin 2.0.1).
+require 'thin'
 
 class App < Sinatra::Base
+
+  set :server, 'thin'
+  set :bind, '0.0.0.0'
 
   get '/:code.pdf' do
     stop_code = params['code']
