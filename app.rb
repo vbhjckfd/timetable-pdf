@@ -51,6 +51,10 @@ class App < Sinatra::Base
 
     halt 502, 'Не вдалося згенерувати PDF' unless ok && File.exist?(file_path)
 
+    # .pdf is on Cloudflare's default cacheable-extension list, so without a
+    # header of our own the edge holds a stop's PDF for a day — long enough to
+    # outlive an edit to the route list, or to the stop's routes upstream.
+    cache_control :no_store
     content_type 'application/pdf'
     send_file(file_path, :disposition => 'attachment', :filename => "#{stop_code}.pdf")
   end
