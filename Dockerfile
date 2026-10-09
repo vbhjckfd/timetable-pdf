@@ -21,7 +21,7 @@ RUN echo "06139f13500db9b0b4373d40ff0faf046e536695fa836e92f41d829696d6859f  /bin
     | sha256sum -c -
 
 # Change to the application's directory
-ENV APP_HOME /application
+ENV APP_HOME=/application
 RUN mkdir $APP_HOME
 WORKDIR $APP_HOME
 

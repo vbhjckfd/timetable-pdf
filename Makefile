@@ -1,7 +1,7 @@
 PROJECT ?= timetable-252615
-IMAGE   ?= gcr.io/$(PROJECT)/timetable-pdf
+IMAGE   ?= gcr.io/$(PROJECT)/timetable-pdf:latest
 SERVICE ?= timetable-pdf
-REGION  ?= europe-west1
+REGION  ?= us-central1
 
 .PHONY: build deploy
 
@@ -16,3 +16,6 @@ deploy: build
 		--region $(REGION) \
 		--image $(IMAGE) \
 		--platform managed
+	gcloud run services describe $(SERVICE) \
+		--project $(PROJECT) --region $(REGION) \
+		--format 'value(status.url,status.latestReadyRevisionName)'
