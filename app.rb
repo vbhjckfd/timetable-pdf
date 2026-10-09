@@ -106,7 +106,12 @@ class App < Sinatra::Base
 
     svg = response.body.force_encoding(Encoding::UTF_8)
     svg = svg[svg.index('<svg')..] if svg.index('<svg')
-    svg = svg.sub(/<svg\b([^>]*?)\swidth="[^"]*"\s+height="[^"]*"/m, '<svg\\1 width="100%"')
+    # QtWebKit does not size an inline SVG's height from its viewBox: with only
+    # width="100%" it lays the drawing out zero pixels tall and prints a blank
+    # page. The SVG fills a box that keeps the viewBox's aspect ratio instead.
+    view_box = svg[/<svg\b[^>]*?\sviewBox="([^"]*)"/m, 1].to_s.split.map(&:to_f)
+    ratio = view_box.size == 4 && view_box[2].positive? ? view_box[3] / view_box[2] : 1
+    svg = svg.sub(/<svg\b([^>]*?)\swidth="[^"]*"\s+height="[^"]*"/m, '<svg\\1 width="100%" height="100%"')
     # Absolute badge URLs rather than a <base>: a <base> would also re-root the
     # drawing's url(#...) gradient and clip references, and they would stop resolving.
     svg = svg.gsub('xlink:href="/', %(xlink:href="#{OFFLINE}/))
@@ -115,7 +120,9 @@ class App < Sinatra::Base
     begin
       html.write(<<~HTML)
         <!doctype html><html><head><meta charset="utf-8">
-        <style>html,body{margin:0;padding:0}svg{display:block}</style></head><body>#{svg}</body></html>
+        <style>html,body{margin:0;padding:0}#poster{position:relative;height:0;padding-bottom:#{(ratio * 100).round(4)}%}
+        #poster>svg{display:block;position:absolute;top:0;left:0}</style></head>
+        <body><div id="poster">#{svg}</div></body></html>
       HTML
       html.close
       ok = wkhtmltopdf(*SCHEMA_PAGE, '--enable-local-file-access', '--disable-external-links',
