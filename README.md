@@ -78,7 +78,7 @@ To regenerate `Gemfile.lock` inside a matching Ruby container:
 ## Build and deploy
 
 Deployed to Google Cloud Run (project `timetable-252615`, region
-`us-central1`).
+`europe-north1`).
 
 ```sh
 make build    # build linux/amd64 image and push to gcr.io/timetable-252615/timetable-pdf

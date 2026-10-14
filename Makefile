@@ -1,7 +1,7 @@
 PROJECT ?= timetable-252615
 IMAGE   ?= gcr.io/$(PROJECT)/timetable-pdf:latest
 SERVICE ?= timetable-pdf
-REGION  ?= us-central1
+REGION  ?= europe-north1
 
 .PHONY: build deploy
 
