@@ -11,7 +11,7 @@ timetables. It fetches pages from
 | --- | --- |
 | `GET /:code.pdf` | Stop timetable, 460×310 mm page. Downloads as `<code>.pdf`. |
 | `GET /:code/schema.pdf` | Network schema poster for the stop, fitted to A1 height (691.4×594 mm). Downloads as `<code>-schema.pdf`. |
-| `GET /:code/panel.pdf` | The plate inside the shelter, 4000×300 mm; `?length=4` gives the 3000 mm plate for 4 m shelters. The page is sized from the SVG's own viewBox, so the plate length is decided in timetable-offline. Downloads as `<code>-panel.pdf`. |
+| `GET /:code/panel.pdf` | The plate inside the shelter, 4000×300 mm; `?length=4` gives the 3000 mm plate for 4 m shelters. The page is sized from the SVG's own viewBox, so the plate length is decided in timetable-offline; it is 0.5 mm short of the viewBox's height, since wkhtmltopdf paints about a point less than the page it rounds up to, and this keeps the plate edge to edge on one page. Downloads as `<code>-panel.pdf`. |
 
 `:code` is the stop code printed on the stop sign (e.g. `707`); it must match
 `[A-Za-z0-9_-]{1,32}`, anything else is a 404.

@@ -82,7 +82,17 @@ class App < Sinatra::Base
       # page. The SVG fills a box that keeps the viewBox's aspect ratio instead.
       view_box = svg[/<svg\b[^>]*?\sviewBox="([^"]*)"/m, 1].to_s.split.map(&:to_f)
       ratio = view_box.size == 4 && view_box[2].positive? ? view_box[3] / view_box[2] : 1
-      page ||= ['--page-width', "#{view_box[2]}mm", '--page-height', "#{view_box[3]}mm"] if view_box.size == 4
+      # A page sized to the drawing has to come out edge to edge. wkhtmltopdf rounds
+      # the page up to whole points but paints about a point less than that, so a
+      # 300 mm page gets a white strip along the bottom and the drawing's last pixel
+      # row spills onto a blank second page. Half a millimetre off the page height
+      # lands under what it paints, clipping to the page keeps the overflow off a
+      # second page, and the drawing's own background (its first rect) covers the
+      # hairline it leaves at the left and right edges.
+      fitted = page.nil? && view_box.size == 4
+      page ||= ['--page-width', "#{view_box[2]}mm", '--page-height', "#{view_box[3] - 0.5}mm"] if fitted
+      background = fitted && svg[/<rect\b[^>]*?\sfill="(#\h{3}(?:\h{3})?)"/m, 1]
+      page_css = fitted ? "height:100%;overflow:hidden;#{"background:#{background}" if background}" : ''
       svg = svg.sub(/<svg\b([^>]*?)\swidth="[^"]*"\s+height="[^"]*"/m, '<svg\\1 width="100%" height="100%"')
       # Absolute badge URLs rather than a <base>: a <base> would also re-root the
       # drawing's url(#...) gradient and clip references, and they would stop resolving.
@@ -92,7 +102,7 @@ class App < Sinatra::Base
       begin
         html.write(<<~HTML)
           <!doctype html><html><head><meta charset="utf-8">
-          <style>html,body{margin:0;padding:0}#poster{position:relative;height:0;padding-bottom:#{(ratio * 100).round(4)}%}
+          <style>html,body{margin:0;padding:0;#{page_css}}#poster{position:relative;height:0;padding-bottom:#{(ratio * 100).round(4)}%}
           #poster>svg{display:block;position:absolute;top:0;left:0}</style></head>
           <body><div id="poster">#{svg}</div></body></html>
         HTML
