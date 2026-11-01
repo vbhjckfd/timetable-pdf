@@ -42,9 +42,9 @@ class App < Sinatra::Base
       end
     end
 
-    def offline_url(path)
+    def offline_url(path, query = overrides)
       url = "#{OFFLINE}#{path}"
-      overrides.any? ? "#{url}?#{URI.encode_www_form(overrides)}" : url
+      query.any? ? "#{url}?#{URI.encode_www_form(query)}" : url
     end
 
     # The overrides change what is drawn, so they have to change the cache path
@@ -56,6 +56,56 @@ class App < Sinatra::Base
     # Argument list, not a command string: no shell, nothing to quote-escape.
     def wkhtmltopdf(*options, source, file_path)
       system('wkhtmltopdf', '-q', '-B', '0', '-L', '0', '-R', '0', '-T', '0', *options, source, file_path)
+    end
+
+    # Fetches a drawing from timetable-offline and prints it as a one-page PDF. A
+    # nil page means "as big as the SVG's viewBox, taken as mm".
+    def svg_pdf(stop_code, url, kind, page, filename)
+      file_path = pdf_path(stop_code, url, kind)
+
+      uri = URI(url)
+      response = begin
+        Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == 'https', open_timeout: 5, read_timeout: 20) do |http|
+          http.get(uri.request_uri)
+        end
+      rescue StandardError => e
+        warn "#{kind} fetch failed for stop #{stop_code}: #{e.class}: #{e.message}"
+        halt 502, 'Не вдалося отримати схему'
+      end
+      halt response.code.to_i, 'Немає такої зупинки' if %w[400 404].include?(response.code)
+      halt 502, 'Не вдалося отримати схему' unless response.is_a?(Net::HTTPSuccess)
+
+      svg = response.body.force_encoding(Encoding::UTF_8)
+      svg = svg[svg.index('<svg')..] if svg.index('<svg')
+      # QtWebKit does not size an inline SVG's height from its viewBox: with only
+      # width="100%" it lays the drawing out zero pixels tall and prints a blank
+      # page. The SVG fills a box that keeps the viewBox's aspect ratio instead.
+      view_box = svg[/<svg\b[^>]*?\sviewBox="([^"]*)"/m, 1].to_s.split.map(&:to_f)
+      ratio = view_box.size == 4 && view_box[2].positive? ? view_box[3] / view_box[2] : 1
+      page ||= ['--page-width', "#{view_box[2]}mm", '--page-height', "#{view_box[3]}mm"] if view_box.size == 4
+      svg = svg.sub(/<svg\b([^>]*?)\swidth="[^"]*"\s+height="[^"]*"/m, '<svg\\1 width="100%" height="100%"')
+      # Absolute badge URLs rather than a <base>: a <base> would also re-root the
+      # drawing's url(#...) gradient and clip references, and they would stop resolving.
+      svg = svg.gsub('xlink:href="/', %(xlink:href="#{OFFLINE}/))
+
+      html = Tempfile.new([kind, '.html'])
+      begin
+        html.write(<<~HTML)
+          <!doctype html><html><head><meta charset="utf-8">
+          <style>html,body{margin:0;padding:0}#poster{position:relative;height:0;padding-bottom:#{(ratio * 100).round(4)}%}
+          #poster>svg{display:block;position:absolute;top:0;left:0}</style></head>
+          <body><div id="poster">#{svg}</div></body></html>
+        HTML
+        html.close
+        ok = wkhtmltopdf(*page, '--enable-local-file-access', '--disable-external-links',
+                         html.path, file_path)
+      ensure
+        html.unlink
+      end
+
+      halt 502, 'Не вдалося згенерувати PDF' unless ok && File.exist?(file_path)
+
+      send_pdf(file_path, filename)
     end
 
     def send_pdf(file_path, filename)
@@ -90,50 +140,22 @@ class App < Sinatra::Base
   get '/:code/schema.pdf' do
     stop_code = stop_code!
     url = offline_url("/#{stop_code}/schema")
-    file_path = pdf_path(stop_code, url, 'schema')
 
-    uri = URI(url)
-    response = begin
-      Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == 'https', open_timeout: 5, read_timeout: 20) do |http|
-        http.get(uri.request_uri)
-      end
-    rescue StandardError => e
-      warn "schema fetch failed for stop #{stop_code}: #{e.class}: #{e.message}"
-      halt 502, 'Не вдалося отримати схему'
-    end
-    halt response.code.to_i, 'Немає такої зупинки' if %w[400 404].include?(response.code)
-    halt 502, 'Не вдалося отримати схему' unless response.is_a?(Net::HTTPSuccess)
+    svg_pdf(stop_code, url, 'schema', SCHEMA_PAGE, "#{stop_code}-schema.pdf")
+  end
 
-    svg = response.body.force_encoding(Encoding::UTF_8)
-    svg = svg[svg.index('<svg')..] if svg.index('<svg')
-    # QtWebKit does not size an inline SVG's height from its viewBox: with only
-    # width="100%" it lays the drawing out zero pixels tall and prints a blank
-    # page. The SVG fills a box that keeps the viewBox's aspect ratio instead.
-    view_box = svg[/<svg\b[^>]*?\sviewBox="([^"]*)"/m, 1].to_s.split.map(&:to_f)
-    ratio = view_box.size == 4 && view_box[2].positive? ? view_box[3] / view_box[2] : 1
-    svg = svg.sub(/<svg\b([^>]*?)\swidth="[^"]*"\s+height="[^"]*"/m, '<svg\\1 width="100%" height="100%"')
-    # Absolute badge URLs rather than a <base>: a <base> would also re-root the
-    # drawing's url(#...) gradient and clip references, and they would stop resolving.
-    svg = svg.gsub('xlink:href="/', %(xlink:href="#{OFFLINE}/))
+  # The plate inside the shelter, 4000x300 mm (3000 with ?length=4, for a 4 m
+  # shelter). The page is sized from the SVG's own viewBox, which is in mm, so the
+  # plate length is decided in one place, timetable-offline. Route overrides mean
+  # nothing here, so only `length` is forwarded.
+  get '/:code/panel.pdf' do
+    stop_code = stop_code!
+    length = params['length'].to_s
+    halt 400, 'Bad length parameter' unless length.empty? || /\A\d{1,2}\z/.match?(length)
 
-    html = Tempfile.new(['schema', '.html'])
-    begin
-      html.write(<<~HTML)
-        <!doctype html><html><head><meta charset="utf-8">
-        <style>html,body{margin:0;padding:0}#poster{position:relative;height:0;padding-bottom:#{(ratio * 100).round(4)}%}
-        #poster>svg{display:block;position:absolute;top:0;left:0}</style></head>
-        <body><div id="poster">#{svg}</div></body></html>
-      HTML
-      html.close
-      ok = wkhtmltopdf(*SCHEMA_PAGE, '--enable-local-file-access', '--disable-external-links',
-                       html.path, file_path)
-    ensure
-      html.unlink
-    end
+    url = offline_url("/#{stop_code}/panel", length.empty? ? {} : { 'length' => length })
 
-    halt 502, 'Не вдалося згенерувати PDF' unless ok && File.exist?(file_path)
-
-    send_pdf(file_path, "#{stop_code}-schema.pdf")
+    svg_pdf(stop_code, url, 'panel', nil, "#{stop_code}-panel.pdf")
   end
 end
 
