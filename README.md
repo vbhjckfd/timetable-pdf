@@ -103,7 +103,7 @@ Deployed to Google Cloud Run (project `timetable-252615`, region
 `europe-north1`).
 
 ```sh
-make build    # build linux/amd64 image and push to gcr.io/timetable-252615/timetable-pdf
+make build    # build linux/amd64 image and push to europe-north1-docker.pkg.dev/timetable-252615/timetable/timetable-pdf
 make deploy   # build, then roll the image out to Cloud Run and print URL + revision
 ```
 

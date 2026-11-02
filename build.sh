@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-IMAGE=gcr.io/timetable-252615/timetable-pdf
+IMAGE=europe-north1-docker.pkg.dev/timetable-252615/timetable/timetable-pdf
 
 # Cloud Run rejects an OCI image index ("Container manifest type
 # 'application/vnd.oci.image.index.v1+json' must support amd64/linux"), and

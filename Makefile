@@ -1,7 +1,7 @@
 PROJECT ?= timetable-252615
-IMAGE   ?= gcr.io/$(PROJECT)/timetable-pdf:latest
 SERVICE ?= timetable-pdf
 REGION  ?= europe-north1
+IMAGE   ?= $(REGION)-docker.pkg.dev/$(PROJECT)/timetable/$(SERVICE):latest
 
 .PHONY: build deploy
 
