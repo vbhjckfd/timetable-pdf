@@ -25,6 +25,10 @@ class App < Sinatra::Base
 
   OFFLINE = ENV.fetch('OFFLINE_URL', 'https://offline.lad.lviv.ua')
 
+  # PDFs are print artefacts, not pages: keep them out of the search index, or
+  # every stop that later closes turns into a crawl error in Search Console.
+  before { headers 'X-Robots-Tag' => 'noindex, nofollow' }
+
   helpers do
     def stop_code!
       params['code'].tap { |code| halt 404 unless STOP_CODE.match?(code) }
@@ -118,6 +122,15 @@ class App < Sinatra::Base
       send_pdf(file_path, filename)
     end
 
+    def offline_missing?(url)
+      uri = URI(url)
+      Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == 'https', open_timeout: 5, read_timeout: 10) do |http|
+        %w[400 404].include?(http.head(uri.request_uri).code)
+      end
+    rescue StandardError
+      false
+    end
+
     def send_pdf(file_path, filename)
       # .pdf is on Cloudflare's default cacheable-extension list, so without a
       # header of our own the edge holds a stop's PDF for a day — long enough to
@@ -136,6 +149,11 @@ class App < Sinatra::Base
     ok = wkhtmltopdf('--page-height', '310mm', '--page-width', '460mm',
                      '--zoom', '0.35', '--disable-external-links',
                      url, file_path)
+
+    # wkhtmltopdf exits non-zero on an upstream 404, so an unknown or closed stop
+    # looks like a render failure. Ask the source which it was, so a missing stop
+    # answers 404 rather than a 502 that crawlers log as a server error.
+    halt 404, 'Немає такої зупинки' if !ok && offline_missing?(url)
 
     halt 502, 'Не вдалося згенерувати PDF' unless ok && File.exist?(file_path)
 
